@@ -1,0 +1,57 @@
+version: '3.8'
+
+networks:
+  microservice-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+
+services:
+  redis-cache:
+    image: redis:alpine
+    container_name: redis-cache
+    ports:
+      - "6379:6379"
+    networks:
+      - microservice-network
+
+  user-db:
+    image: postgres:16-alpine
+    container_name: user-db
+    user: root
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=YourStrongPassword123!
+      - POSTGRES_DB=UserDb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 5
+    networks:
+      - microservice-network
+
+  userservice:
+    image: userservice
+    build: 
+      context: ./UserService
+      dockerfile: /Dockerfile
+    ports:
+      - "5000:5126"
+    environment:
+      - ASPNETCORE_URLS=http://+:5126
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=Host=user-db;Port=5432;Database=UserDb;Username=postgres;Password=YourStrongPassword123!;
+      - ConnectionStrings__Redis=redis-cache:6379
+    depends_on:
+      user-db:
+        condition: service_healthy
+      redis-cache:
+        condition: service_started
+    networks:
+      - microservice-network
